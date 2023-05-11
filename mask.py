@@ -18,8 +18,7 @@ def focus_zones(im, fill=False, rough=False, zones=5):
     blurred = cv2.GaussianBlur(sobel, (13, 13), 0)
 
     # Quick threshold
-    blurred[blurred > 15] = 255
-    blurred[blurred < 255] = 0
+    blurred = quickthresh(blurred, 15)
 
     # Fill small areas
     rough_subject = remove_blobs(blurred, area=1000, connectivity=10)
@@ -90,7 +89,7 @@ for path in paths:
     Bn = norm(B)
 
     # Extract the (rough) focus area using the L channel
-    focus_area_rough = focus_zones(L, fill=True, rough=True, zones=1)
+    focus_area_rough = focus_zones(L, fill=True, rough=True, zones=5)
 
     # Extract the (precise) focus area using the S channel
     focus_area = focus_zones(S, fill=True, rough=False, zones=5)
