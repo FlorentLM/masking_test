@@ -63,79 +63,79 @@ paths = in_folder.glob('*.tif')
 # path = in_folder / "_x_00000_y_00240_.tif"
 # path = in_folder / "_x_00000_y_00000_.tif"
 # path = in_folder / "_x_00250_y_00640_.tif"
-path = in_folder / "_x_00000_y_01120_.tif"
+# path = in_folder / "_x_00000_y_01120_.tif"
 # path = in_folder / "_x_00200_y_00640_.tif"
 # path = in_folder / "_x_00400_y_00800_.tif"
 
-single_contour = True
-#
-# for path in paths:
-#     print(f"Processing {path.stem}...", end="")
-#     sys.stdout.flush()
+single_contour = False
 
-# Open image, and extract channels from HSV and LAB colour spaces
-img = cv2.imread(path.as_posix())
-img_LAB = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
-img_HSV = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-img_GRAY = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+for path in paths:
+    print(f"Processing {path.stem}...", end="")
+    sys.stdout.flush()
 
-L, A, B = cv2.split(img_LAB)
-H, S, V = cv2.split(img_HSV)
+    # Open image, and extract channels from HSV and LAB colour spaces
+    img = cv2.imread(path.as_posix())
+    img_LAB = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+    img_HSV = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    img_GRAY = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-# Normalise all the channels between 0 and 1
-Sn = norm(S)
-Vn = norm(V)
-Ln = norm(L)
-An = norm(A)
-Bn = norm(B)
+    L, A, B = cv2.split(img_LAB)
+    H, S, V = cv2.split(img_HSV)
 
-# Extract the (rough) focus area using the L channel
-focus_area_rough = focus_zones(L, fill=True, rough=True, zones=1)
+    # Normalise all the channels between 0 and 1
+    Sn = norm(S)
+    Vn = norm(V)
+    Ln = norm(L)
+    An = norm(A)
+    Bn = norm(B)
 
-# Extract the (precise) focus area using the S channel
-focus_area = focus_zones(S, fill=True, rough=False, zones=5)
+    # Extract the (rough) focus area using the L channel
+    focus_area_rough = focus_zones(L, fill=True, rough=True, zones=1)
 
-focus_area_clean = focus_area.astype(bool) & focus_area_rough.astype(bool)
-focus_area_clean = cv2.GaussianBlur((focus_area_clean * 255).astype(np.uint8), (17, 17), 0)
+    # Extract the (precise) focus area using the S channel
+    focus_area = focus_zones(S, fill=True, rough=False, zones=5)
 
-# Extract the different "layers" that we want to keep
-lights = norm(Ln * Vn)
-darks = norm(1 - Vn)
-bright_colours = norm(Sn * norm(Vn-Ln))
-colour = norm(Sn * (1 - Vn))
-chroma = norm(An + Bn)
-cc = norm(colour * chroma) * 2
+    focus_area_clean = focus_area.astype(bool) & focus_area_rough.astype(bool)
+    focus_area_clean = cv2.GaussianBlur((focus_area_clean * 255).astype(np.uint8), (17, 17), 0)
 
-# Clip and normalise again our "layers" to get rid of background and noise
-bright_colours_clipped = norm(np.clip(bright_colours, 0.1, 0.5))
-colours_clipped = norm(np.clip(cc, 0.1, 0.5))
-lights_clipped = norm(np.clip(lights, 0.5, 1.0))
-darks_clipped = norm(np.clip(darks, 0.5, 1))
+    # Extract the different "layers" that we want to keep
+    lights = norm(Ln * Vn)
+    darks = norm(1 - Vn)
+    bright_colours = norm(Sn * norm(Vn-Ln))
+    colour = norm(Sn * (1 - Vn))
+    chroma = norm(An + Bn)
+    cc = norm(colour * chroma) * 2
 
-# Merge them back and use the focus mask to remove the unwanted bits
-merge = (colours_clipped + lights_clipped + darks_clipped + bright_colours_clipped) * focus_area_clean
-merge = norm(merge)
+    # Clip and normalise again our "layers" to get rid of background and noise
+    bright_colours_clipped = norm(np.clip(bright_colours, 0.1, 0.5))
+    colours_clipped = norm(np.clip(cc, 0.1, 0.5))
+    lights_clipped = norm(np.clip(lights, 0.5, 1.0))
+    darks_clipped = norm(np.clip(darks, 0.5, 1))
 
-# Binarise and get rid of the smaller areas
-binary = quickthresh(merge, 0.2)
+    # Merge them back and use the focus mask to remove the unwanted bits
+    merge = (colours_clipped + lights_clipped + darks_clipped + bright_colours_clipped) * focus_area_clean
+    merge = norm(merge)
 
-kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
-closing = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel, iterations=3)
+    # Binarise and get rid of the smaller areas
+    binary = quickthresh(merge, 0.2)
 
-# Use the closed image to get rid of
-binary[~closing.astype(bool)] = 0
-final = (remove_blobs(binary, area=5000, connectivity=100) * 255).astype(np.uint8)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+    closing = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel, iterations=3)
 
-if single_contour:
-    # Optionally find and extract the biggest contour
-    contours, hierarchy = cv2.findContours(final, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
-    cnt = sorted(contours, key=cv2.contourArea, reverse=True)[0]
+    # Use the closed image to get rid of
+    binary[~closing.astype(bool)] = 0
+    final = (remove_blobs(binary, area=5000, connectivity=100) * 255).astype(np.uint8)
 
-    final_uniq = np.zeros_like(final, dtype=np.uint8)
-    cv2.fillPoly(final_uniq, [cnt], 255)
-    final = final_uniq
+    if single_contour:
+        # Optionally find and extract the biggest contour
+        contours, hierarchy = cv2.findContours(final, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
+        cnt = sorted(contours, key=cv2.contourArea, reverse=True)[0]
 
-        # # Filename
-        # filepath = out_folder / f'{path.stem}masked.png'
-        # cv2.imwrite(filepath.as_posix(), final)
-        # print(f"Done")
+        final_uniq = np.zeros_like(final, dtype=np.uint8)
+        cv2.fillPoly(final_uniq, [cnt], 255)
+        final = final_uniq
+
+        # Filename
+        filepath = out_folder / f'{path.stem}masked.png'
+        cv2.imwrite(filepath.as_posix(), final)
+        print(f"Done")
