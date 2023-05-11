@@ -6,6 +6,7 @@ from skimage import morphology
 import cv2
 import sys
 
+
 def focus_zones(im, fill=False, rough=False, zones=5):
     # Sobel filter in X and Y
     sobel_x = cv2.Sobel(im, cv2.CV_16S, 1, 0, ksize=3, scale=1, delta=0, borderType=cv2.BORDER_DEFAULT)
@@ -62,6 +63,7 @@ paths = in_folder.glob('*.tif')
 # path = in_folder / "_x_00000_y_00240_.tif"
 # path = in_folder / "_x_00000_y_00000_.tif"
 # path = in_folder / "_x_00250_y_00640_.tif"
+# path = in_folder / "_x_00100_y_00480_.tif"
 # path = in_folder / "_x_00000_y_01120_.tif"
 # path = in_folder / "_x_00200_y_00640_.tif"
 # path = in_folder / "_x_00400_y_00800_.tif"
@@ -116,12 +118,12 @@ for path in paths:
     merge = norm(merge)
 
     # Binarise and get rid of the smaller areas
-    binary = quickthresh(merge, 0.2)
+    binary = quickthresh(merge, 0.1)
 
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
     closing = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel, iterations=3)
 
-    # Use the closed image to get rid of
+    # Remove noise only *outside* of the closed mask, so details like hairs are kept
     binary[~closing.astype(bool)] = 0
     final = (remove_blobs(binary, area=5000, connectivity=100) * 255).astype(np.uint8)
 
