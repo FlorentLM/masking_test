@@ -6,7 +6,7 @@ from skimage import morphology
 import cv2
 import sys
 
-def focus_zone(im, n=5):
+def focus_zones(im, fill=False, rough=False, zones=5):
     # Sobel filter in X and Y
     sobel_x = cv2.Sobel(im, cv2.CV_16S, 1, 0, ksize=3, scale=1, delta=0, borderType=cv2.BORDER_DEFAULT)
     sobel_y = cv2.Sobel(im, cv2.CV_16S, 0, 1, ksize=3, scale=1, delta=0, borderType=cv2.BORDER_DEFAULT)
@@ -22,14 +22,19 @@ def focus_zone(im, n=5):
     blurred[blurred < 255] = 0
 
     # Fill small areas
-    rough_subject = remove_blobs(blurred, area=100, connectivity=1)
+    rough_subject = remove_blobs(blurred, area=1000, connectivity=10)
 
-    contours, _ = cv2.findContours(rough_subject.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-    biggest_contours = sorted(contours, key=lambda x: cv2.contourArea(x))[-min(5, len(contours)):]
-    out = np.zeros_like(im, dtype=np.uint8)
-    for c in biggest_contours:
-        cv2.fillPoly(out, [c], color=255)
-    return out
+    if fill:
+        contours, _ = cv2.findContours(rough_subject.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        # contours, _ = cv2.findContours(rough_subject.astype(np.uint8), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        biggest_contours = sorted(contours, key=lambda x: cv2.contourArea(x))[-min(zones, len(contours)):]
+        out = np.zeros_like(im, dtype=np.uint8)
+        for c in biggest_contours:
+            if rough:
+                c = cv2.convexHull(c)
+            cv2.fillPoly(out, [c], color=255)
+        return out
+    return rough_subject
 
 def norm(arr):
     arr = arr.astype(float) - arr.min()
@@ -84,9 +89,14 @@ Ln = norm(L)
 An = norm(A)
 Bn = norm(B)
 
-# Extract the focus area the S channel
-focus_area = focus_zone(S)
-focus_area = cv2.GaussianBlur((focus_area * 255).astype(np.uint8), (17, 17), 0)
+# Extract the (rough) focus area using the L channel
+focus_area_rough = focus_zones(L, fill=True, rough=True, zones=1)
+
+# Extract the (precise) focus area using the S channel
+focus_area = focus_zones(S, fill=True, rough=False, zones=5)
+
+focus_area_clean = focus_area.astype(bool) & focus_area_rough.astype(bool)
+focus_area_clean = cv2.GaussianBlur((focus_area_clean * 255).astype(np.uint8), (17, 17), 0)
 
 # Extract the different "layers" that we want to keep
 lights = norm(Ln * Vn)
@@ -103,16 +113,18 @@ lights_clipped = norm(np.clip(lights, 0.5, 1.0))
 darks_clipped = norm(np.clip(darks, 0.5, 1))
 
 # Merge them back and use the focus mask to remove the unwanted bits
-merge = (colours_clipped + lights_clipped + darks_clipped + bright_colours_clipped) * focus_area
+merge = (colours_clipped + lights_clipped + darks_clipped + bright_colours_clipped) * focus_area_clean
 merge = norm(merge)
 
 # Binarise and get rid of the smaller areas
-binary = quickthresh(merge, 0.1)
+binary = quickthresh(merge, 0.2)
 
 kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
-closing = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel, iterations=2)
+closing = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel, iterations=3)
 
-final = (remove_blobs(closing, area=5000, connectivity=100) * 255).astype(np.uint8)
+# Use the closed image to get rid of
+binary[~closing.astype(bool)] = 0
+final = (remove_blobs(binary, area=5000, connectivity=100) * 255).astype(np.uint8)
 
 if single_contour:
     # Optionally find and extract the biggest contour
