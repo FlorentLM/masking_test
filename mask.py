@@ -108,7 +108,7 @@ for path in paths:
     lights_clipped = norm(np.clip(lights, 0.5, 1.0))
     darks_clipped = norm(np.clip(darks, 0.5, 1))
 
-    # Merge them back and use the rough subject mask to remove the frame
+    # Merge them back and use the focus mask to remove the unwanted bits
     merge = (colours_clipped + lights_clipped + darks_clipped + bright_colours_clipped) * focus_area
     merge = norm(merge)
 
