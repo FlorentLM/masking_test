@@ -135,7 +135,7 @@ for path in paths:
         cv2.fillPoly(final_uniq, [cnt], 255)
         final = final_uniq
 
-        # Filename
-        filepath = out_folder / f'{path.stem}masked.png'
-        cv2.imwrite(filepath.as_posix(), final)
-        print(f"Done")
+    # Filename
+    filepath = out_folder / f'{path.stem}masked.png'
+    cv2.imwrite(filepath.as_posix(), final)
+    print(f"Done")
