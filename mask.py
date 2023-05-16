@@ -8,9 +8,9 @@ import sys
 
 
 def focus_zones(im, fill=False, rough=False, zones=5):
-    # Sobel filter in X and Y
-    sobel_x = cv2.Sobel(im, cv2.CV_16S, 1, 0, ksize=3, scale=1, delta=0, borderType=cv2.BORDER_DEFAULT)
-    sobel_y = cv2.Sobel(im, cv2.CV_16S, 0, 1, ksize=3, scale=1, delta=0, borderType=cv2.BORDER_DEFAULT)
+       # Sobel filter in X and Y
+    sobel_x = cv2.Sobel(im, cv2.CV_16S, 1, 0, ksize=3, scale=2, delta=0, borderType=cv2.BORDER_DEFAULT)
+    sobel_y = cv2.Sobel(im, cv2.CV_16S, 0, 1, ksize=3, scale=2, delta=0, borderType=cv2.BORDER_DEFAULT)
 
     # Merge the absolute values of the Sobel results
     sobel = cv2.addWeighted(np.abs(sobel_x), 0.5, np.abs(sobel_y), 0.5, 0)
@@ -25,8 +25,8 @@ def focus_zones(im, fill=False, rough=False, zones=5):
     rough_subject = remove_blobs(blurred, area=1000, connectivity=10)
 
     if fill:
-        contours, _ = cv2.findContours(rough_subject.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-        # contours, _ = cv2.findContours(rough_subject.astype(np.uint8), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        # contours, _ = cv2.findContours(rough_subject.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        contours, _ = cv2.findContours(rough_subject.astype(np.uint8), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         biggest_contours = sorted(contours, key=lambda x: cv2.contourArea(x))[-min(zones, len(contours)):]
         out = np.zeros_like(im, dtype=np.uint8)
         for c in biggest_contours:
@@ -54,13 +54,14 @@ def remove_blobs(img, area=0.01, connectivity=1):
 ##
 
 in_folder = Path('/Users/florent/Desktop/raw_atta_vollenweideri/stacked')
+in_folder = Path('D:\scans\cataglyphis_velox_4\stacked')
 
 out_folder = in_folder.parent / "stacked_test"
 out_folder.mkdir(parents=True, exist_ok=True)
 
 paths = in_folder.glob('*.tif')
 
-# path = in_folder / "_x_00000_y_00240_.tif"
+# path = in_folder / "_x_00000_y_00400_0.tif"
 # path = in_folder / "_x_00000_y_00000_.tif"
 # path = in_folder / "_x_00250_y_00640_.tif"
 # path = in_folder / "_x_00100_y_00480_.tif"
@@ -68,7 +69,7 @@ paths = in_folder.glob('*.tif')
 # path = in_folder / "_x_00200_y_00640_.tif"
 # path = in_folder / "_x_00400_y_00800_.tif"
 
-single_contour = False
+single_contour = True
 
 for path in paths:
     print(f"Processing {path.stem}...", end="")
@@ -78,7 +79,7 @@ for path in paths:
     img = cv2.imread(path.as_posix())
     img_LAB = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
     img_HSV = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-    img_GRAY = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    # img_GRAY = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
     L, A, B = cv2.split(img_LAB)
     H, S, V = cv2.split(img_HSV)
@@ -91,12 +92,13 @@ for path in paths:
     Bn = norm(B)
 
     # Extract the (rough) focus area using the L channel
-    focus_area_rough = focus_zones(L, fill=True, rough=True, zones=5)
+    # focus_area_rough = focus_zones(L, fill=True, rough=True, zones=5)
 
     # Extract the (precise) focus area using the S channel
-    focus_area = focus_zones(S, fill=True, rough=False, zones=5)
+    # focus_area = focus_zones(S, fill=True, rough=False, zones=5)
 
-    focus_area_clean = focus_area.astype(bool) & focus_area_rough.astype(bool)
+    # focus_area_clean = focus_area.astype(bool) & focus_area_rough.astype(bool)
+    focus_area_clean = focus_zones(L, fill=True, rough=False, zones=5)
     focus_area_clean = cv2.GaussianBlur((focus_area_clean * 255).astype(np.uint8), (17, 17), 0)
 
     # Extract the different "layers" that we want to keep
@@ -118,14 +120,16 @@ for path in paths:
     merge = norm(merge)
 
     # Binarise and get rid of the smaller areas
-    binary = quickthresh(merge, 0.1)
+    binary = quickthresh(merge, 0.05)
 
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
     closing = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel, iterations=3)
+    erosion = cv2.erode(closing, kernel, iterations=1)
 
     # Remove noise only *outside* of the closed mask, so details like hairs are kept
     binary[~closing.astype(bool)] = 0
-    final = (remove_blobs(binary, area=5000, connectivity=100) * 255).astype(np.uint8)
+    binary[erosion.astype(bool)] = 255
+    final = (remove_blobs(binary, area=5000, connectivity=10) * 255).astype(np.uint8)
 
     if single_contour:
         # Optionally find and extract the biggest contour
@@ -137,6 +141,8 @@ for path in paths:
         final = final_uniq
 
     # Filename
-    filepath = out_folder / f'{path.stem}masked.png'
-    cv2.imwrite(filepath.as_posix(), final)
+    filepath = out_folder / f'{path.stem}masked.tif'
+
+    img[~final.astype(bool), :] = 255
+    cv2.imwrite(filepath.as_posix(), img)
     print(f"Done")
