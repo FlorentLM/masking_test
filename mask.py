@@ -53,10 +53,9 @@ def remove_blobs(img, area=0.01, connectivity=1):
 
 ##
 
-in_folder = Path('/Users/florent/Desktop/raw_atta_vollenweideri/stacked')
 in_folder = Path('D:\scans\cataglyphis_velox_4\stacked')
 
-out_folder = in_folder.parent / "stacked_test"
+out_folder = in_folder.parent / "masks"
 out_folder.mkdir(parents=True, exist_ok=True)
 
 paths = in_folder.glob('*.tif')
@@ -69,7 +68,7 @@ paths = in_folder.glob('*.tif')
 # path = in_folder / "_x_00200_y_00640_.tif"
 # path = in_folder / "_x_00400_y_00800_.tif"
 
-single_contour = True
+single_contour = False
 
 for path in paths:
     print(f"Processing {path.stem}...", end="")
@@ -141,8 +140,7 @@ for path in paths:
         final = final_uniq
 
     # Filename
-    filepath = out_folder / f'{path.stem}masked.tif'
+    filepath = out_folder / f'{path.stem}_mask.png'.replace('__', '_')
 
-    img[~final.astype(bool), :] = 255
-    cv2.imwrite(filepath.as_posix(), img)
+    cv2.imwrite(filepath.as_posix(), final)
     print(f"Done")
