@@ -53,9 +53,9 @@ def remove_blobs(img, area=0.01, connectivity=1):
 
 ##
 
-in_folder = Path('D:\scans\cataglyphis_velox_4\stacked')
+in_folder = Path('F:\scans\messor_2\stacked')
 
-out_folder = in_folder.parent / "masks"
+out_folder = in_folder.parent / "masks_2"
 out_folder.mkdir(parents=True, exist_ok=True)
 
 paths = in_folder.glob('*.tif')
@@ -97,7 +97,7 @@ for path in paths:
     # focus_area = focus_zones(S, fill=True, rough=False, zones=5)
 
     # focus_area_clean = focus_area.astype(bool) & focus_area_rough.astype(bool)
-    focus_area_clean = focus_zones(L, fill=True, rough=False, zones=5)
+    focus_area_clean = focus_zones(L, fill=False, rough=False, zones=5)
     focus_area_clean = cv2.GaussianBlur((focus_area_clean * 255).astype(np.uint8), (17, 17), 0)
 
     # Extract the different "layers" that we want to keep
@@ -140,7 +140,7 @@ for path in paths:
         final = final_uniq
 
     # Filename
-    filepath = out_folder / f'{path.stem}_mask.png'.replace('__', '_')
+    filepath = out_folder / f'{path.stem}.png'.replace('__', '_')
 
     cv2.imwrite(filepath.as_posix(), final)
     print(f"Done")
